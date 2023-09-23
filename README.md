@@ -1,5 +1,8 @@
 # tglog
+
 Realtime log analyzer for NGinx with Telegram notifications
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## General features:
 
