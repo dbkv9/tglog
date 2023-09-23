@@ -62,6 +62,12 @@ This file have next structure for project configuration:
 
 Among other things, you need create a Telegram bot through [@botfather](https://t.me/BotFather) and set bot token to _tgtoken_ parameter.
 
+4. Run
+
+```
+./tglog --config /path/to/config.yaml
+```
+
 ## TODO
 - [ ] move config file to linux system folder
 - [ ] add systemd support
