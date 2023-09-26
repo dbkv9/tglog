@@ -6,6 +6,7 @@ Realtime log analyzer for NGinx with Telegram notifications
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/5d0506415c1a4cbf8c08a9543e1bd4a3)](https://app.codacy.com/gh/dbkv9/tglog/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+![tglog workflow](https://github.com/dbkv9/tglog/actions/workflows/go.yml/badge.svg)
 
 ## General features:
 
