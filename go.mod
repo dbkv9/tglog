@@ -1,4 +1,4 @@
-module tglog
+module github.com/dbkv9/tglog
 
 go 1.20
 
