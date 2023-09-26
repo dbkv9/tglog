@@ -1,0 +1,9 @@
+[Unit]
+Description=tglog service
+After=nginx.target
+
+[Service]
+ExecStart=tglog
+
+[Install]
+WantedBy=multi-user.target
