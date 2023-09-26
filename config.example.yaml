@@ -1,0 +1,16 @@
+projects:
+  project1:
+    log: "/path/to/project1/log/file"
+    host: "https://project1.com/"
+    reportschedule: "0 * * * *"
+    tgchat: -000000000
+    webserver: "nginx"
+    format: "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""
+  project2:
+    log: "/path/to/project2/log/file"
+    host: "https://project2.com/"
+    reportschedule: "0 * * * *"
+    tgchat: -000000000
+    webserver: "nginx"
+    format: "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""
+tgtoken: "XXXXXXXXXXXXX:XXXXXXXXXXX-XXXX-XXXXXXXXXX-XXXX"

@@ -330,7 +330,7 @@ func get_compiled_regexp(format string) *regroup.ReGroup {
 
 func main() {
 	var args struct {
-		Config string `arg:"required"`
+		Config string `default:"/usr/local/etc/tglog/config.yaml"`
 	}
 
 	arg.MustParse(&args)
