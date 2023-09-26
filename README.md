@@ -1,3 +1,5 @@
+![tglog](https://github.com/dbkv9/tglog/assets/139353879/0a70eeb9-f1ca-46c7-91c7-e9c10437bfdf)
+
 # tglog
 
 Realtime log analyzer for NGinx with Telegram notifications
@@ -35,7 +37,7 @@ go get
 go build tglog.go
 ```
 
-3. Create config.yaml file wuth your parameters
+3. Create config.yaml file with your parameters
 
 ```
 projects:
