@@ -77,6 +77,7 @@ type Report struct {
 const MSG_TEMPLATE = `
 %s <b>%d</b>: %s
 
+<b>IP</b>: %s
 <b>DATE</b>: %s
 <b>METHOD</b>: %s / %s
 
@@ -403,8 +404,8 @@ func main() {
 
 					markup := fmt.Sprintf(MSG_TEMPLATE,
 						emoji, row.Status, row.RequestP.Uri,
-						row.LocalTimeP, row.RequestP.Method, row.RequestP.Protocol,
-						row.UserAgent)
+						row.RemoteAddr, row.LocalTimeP, row.RequestP.Method, 
+						row.RequestP.Protocol, row.UserAgent)
 
 					tg_send_message(*tgbot, cfg.Projects[row.ProjectName].TgChat, markup)
 				}
