@@ -281,7 +281,7 @@ func tglistner(bot *tgbotapi.BotAPI, cfg_reverse ConfigReverse) {
 					}
 
 					f.SetActiveSheet(index)
-					
+
 					now := time.Now()
 					filename := fmt.Sprintf("export_%d.xlsx", now.Unix())
 					if err := f.SaveAs(filename); err != nil {
@@ -404,7 +404,7 @@ func main() {
 
 					markup := fmt.Sprintf(MSG_TEMPLATE,
 						emoji, row.Status, row.RequestP.Uri,
-						row.RemoteAddr, row.LocalTimeP, row.RequestP.Method, 
+						row.RemoteAddr, row.LocalTimeP, row.RequestP.Method,
 						row.RequestP.Protocol, row.UserAgent)
 
 					tg_send_message(*tgbot, cfg.Projects[row.ProjectName].TgChat, markup)
