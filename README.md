@@ -29,7 +29,7 @@ Realtime log analyzer for NGinx with Telegram notifications
 1. Download and install golang compiler >= 1.20.6
 > https://go.dev/doc/install
 
-2. Clone repo, install dependencie and build project
+2. Clone repo, install dependencies and build project
 
 ```
 git clone git@github.com:dbkv9/tglog.git
