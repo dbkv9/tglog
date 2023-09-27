@@ -122,7 +122,13 @@ func parse(line string, cfg ProjectConfig) (Row, bool) {
 		return Row{}, false
 	}
 	row.RequestP.Method = request_p[0]
-	row.RequestP.Uri, _ = url.JoinPath(cfg.Host, request_p[1])
+
+	parsed_url, _ := url.Parse(request_p[1])
+	if parsed_url.Host == "" {
+		row.RequestP.Uri, _ = url.JoinPath(cfg.Host, request_p[1])
+	} else {
+		row.RequestP.Uri = request_p[1]
+	}
 	row.RequestP.Protocol = request_p[2]
 
 	return *row, true
