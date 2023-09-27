@@ -19,7 +19,7 @@ Realtime log analyzer for NGinx with Telegram notifications
 
 ![image](https://github.com/dbkv9/tglog/assets/139353879/8581aa5a-7b0e-496f-be07-f4afa5b33eb2)
 
-4. Log file export to Excel sheet
+3. Log file export to Excel sheet
 
 ![image](https://github.com/dbkv9/tglog/assets/139353879/02a6ca32-cdc0-43dc-b2fe-73367163176a)
 
