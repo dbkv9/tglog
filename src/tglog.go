@@ -1,21 +1,8 @@
-/*
- * todo:
- * - refactor config access by key-val
- * - remove DB clover
- */
-
 package main
 
 import (
 	"bufio"
 	"fmt"
-	"github.com/alexflint/go-arg"
-	"github.com/go-co-op/gocron"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nxadm/tail"
-	"github.com/oriser/regroup"
-	"github.com/xuri/excelize/v2"
-	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -24,6 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alexflint/go-arg"
+	"github.com/go-co-op/gocron"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/nxadm/tail"
+	"github.com/oriser/regroup"
+	"github.com/xuri/excelize/v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Row struct {
@@ -67,11 +62,11 @@ type DailyRow struct {
 }
 
 type Report struct {
-	Total     int
-	Total_5xx int
-	Total_4xx int
-	Total_3xx int
-	Total_2xx int
+	Total    int
+	Total5xx int
+	Total4xx int
+	Total3xx int
+	Total2xx int
 }
 
 const MSG_TEMPLATE = `
@@ -94,7 +89,7 @@ const REPORT_TEMPLATE = `
 <b>TOTAL</b>: %d
 `
 
-func parse(line string, cfg ProjectConfig) (Row, bool) {
+func ParseLine(line string, cfg ProjectConfig) (Row, bool) {
 	row := &Row{}
 	err := cfg.ParseRegexp.MatchToTarget(line, row)
 
@@ -115,32 +110,32 @@ func parse(line string, cfg ProjectConfig) (Row, bool) {
 	// 0 - method like POST, GET
 	// 1 - request URI
 	// 2 - protocol like HTTP1.0 / HTTP2.0
-	request_p := strings.Split(row.Request, " ")
+	requestParsed := strings.Split(row.Request, " ")
 
 	// skip invalid requests
-	if len(request_p) < 3 {
+	if len(requestParsed) < 3 {
 		return Row{}, false
 	}
-	row.RequestP.Method = request_p[0]
+	row.RequestP.Method = requestParsed[0]
 
-	parsed_url, _ := url.Parse(request_p[1])
+	parsed_url, _ := url.Parse(requestParsed[1])
 	if parsed_url.Host == "" {
-		row.RequestP.Uri, _ = url.JoinPath(cfg.Host, request_p[1])
+		row.RequestP.Uri, _ = url.JoinPath(cfg.Host, requestParsed[1])
 	} else {
-		row.RequestP.Uri = request_p[1]
+		row.RequestP.Uri = requestParsed[1]
 	}
-	row.RequestP.Protocol = request_p[2]
+	row.RequestP.Protocol = requestParsed[2]
 
 	return *row, true
 }
 
-func watch(name string, tailer *tail.Tail, cfg ProjectConfig, ch chan Row) {
+func WatchLog(name string, tailer *tail.Tail, cfg ProjectConfig, ch chan Row) {
 	for line := range tailer.Lines {
 		if line.Text == "" {
 			continue
 		}
 
-		if row, ok := parse(line.Text, cfg); ok {
+		if row, ok := ParseLine(line.Text, cfg); ok {
 			row.ProjectName = name
 			ch <- row
 		}
@@ -148,7 +143,7 @@ func watch(name string, tailer *tail.Tail, cfg ProjectConfig, ch chan Row) {
 	}
 }
 
-func readcfg(path string) Config {
+func ReadConfig(path string) Config {
 	conf := Config{}
 	content, err := ioutil.ReadFile(path)
 
@@ -164,52 +159,52 @@ func readcfg(path string) Config {
 	return conf
 }
 
-func sendreport(bot tgbotapi.BotAPI, chat_id int64, name string, daily_history *map[string][]DailyRow) {
+func SendReport(bot tgbotapi.BotAPI, chat_id int64, name string, dailyHistory *map[string][]DailyRow) {
 	report := Report{}
 
-	for _, row := range (*daily_history)[name] {
+	for _, row := range (*dailyHistory)[name] {
 		status := row.Status
 
 		report.Total++
 
 		if status >= 200 && status <= 299 {
-			report.Total_2xx++
+			report.Total2xx++
 		} else if status >= 300 && status <= 399 {
-			report.Total_3xx++
+			report.Total3xx++
 		} else if status >= 400 && status <= 499 {
-			report.Total_4xx++
+			report.Total4xx++
 		} else if status >= 500 && status <= 599 {
-			report.Total_5xx++
+			report.Total5xx++
 		}
 	}
 
 	markup := fmt.Sprintf(REPORT_TEMPLATE,
-		name, time.Now().Format(time.RFC1123), report.Total_5xx,
-		report.Total_4xx, report.Total_3xx, report.Total_2xx,
+		name, time.Now().Format(time.RFC1123), report.Total5xx,
+		report.Total4xx, report.Total3xx, report.Total2xx,
 		report.Total)
 
-	tg_send_message(bot, chat_id, markup)
+	SendMessage(bot, chat_id, markup)
 
-	(*daily_history)[name] = []DailyRow{}
+	(*dailyHistory)[name] = []DailyRow{}
 }
 
-func tg_send_message(bot tgbotapi.BotAPI, chat_id int64, markup string) {
+func SendMessage(bot tgbotapi.BotAPI, chat_id int64, markup string) {
 	msg := tgbotapi.NewMessage(chat_id, markup)
 	msg.ParseMode = "html"
 	msg.DisableWebPagePreview = true
 	bot.Send(msg)
 }
 
-func is_today(localtime time.Time) bool {
+func IsToday(localtime time.Time) bool {
 	now := time.Now()
-	day_start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	day_end := day_start.Add(time.Hour * 24)
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dayEnd := dayStart.Add(time.Hour * 24)
 
-	return (day_start.Compare(localtime) == -1 || day_start.Compare(localtime) == 0) &&
-		(day_end.Compare(localtime) == 1)
+	return (dayStart.Compare(localtime) == -1 || dayStart.Compare(localtime) == 0) &&
+		(dayEnd.Compare(localtime) == 1)
 }
 
-func tglistner(bot *tgbotapi.BotAPI, cfg_reverse ConfigReverse) {
+func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -225,21 +220,21 @@ func tglistner(bot *tgbotapi.BotAPI, cfg_reverse ConfigReverse) {
 		}
 
 		if update.Message.Command() == "export" {
-			if project_cfg, ok := cfg_reverse[update.Message.Chat.ID]; ok {
-				file, err := os.Open(project_cfg.Log)
+			if projectCfg, ok := cfgReverse[update.Message.Chat.ID]; ok {
+				file, err := os.Open(projectCfg.Log)
 				if err != nil {
 					log.Panic(err)
 				}
 
 				defer file.Close()
 
-				project_cfg.ParseRegexp = get_compiled_regexp(project_cfg.Format)
+				projectCfg.ParseRegexp = CompileRegexp(projectCfg.Format)
 
 				rows := []Row{}
 
 				scanner := bufio.NewScanner(file)
 				for scanner.Scan() {
-					if row, ok := parse(scanner.Text(), project_cfg); ok {
+					if row, ok := ParseLine(scanner.Text(), projectCfg); ok {
 						rows = append(rows, row)
 					}
 				}
@@ -304,17 +299,17 @@ func tglistner(bot *tgbotapi.BotAPI, cfg_reverse ConfigReverse) {
 }
 
 // return reverse map of cfg's by tg chat_id
-func get_cfg_reverse_map(projects map[string]ProjectConfig) ConfigReverse {
+func GetConfigReverseMap(projects map[string]ProjectConfig) ConfigReverse {
 	cfg := ConfigReverse{}
 
-	for _, project_cfg := range projects {
-		cfg[project_cfg.TgChat] = project_cfg
+	for _, projectCfg := range projects {
+		cfg[projectCfg.TgChat] = projectCfg
 	}
 
 	return cfg
 }
 
-func get_compiled_regexp(format string) *regroup.ReGroup {
+func CompileRegexp(format string) *regroup.ReGroup {
 	re := regexp.MustCompile(`\$\w+`)
 
 	// prepare variables for row parser
@@ -322,14 +317,14 @@ func get_compiled_regexp(format string) *regroup.ReGroup {
 
 	// escapes for brackets
 	r := strings.NewReplacer("[", `\[`, "]", `\]`)
-	re_pattern := r.Replace(format)
+	rePattern := r.Replace(format)
 
 	for _, x := range variables {
-		re_pattern = strings.Replace(re_pattern, x, "(?P<"+strings.Replace(x, "$", "", -1)+">.*?)", -1)
+		rePattern = strings.Replace(rePattern, x, "(?P<"+strings.Replace(x, "$", "", -1)+">.*?)", -1)
 	}
 
 	// prepare regexp pattern for row parser
-	re_compiled := regroup.MustCompile(re_pattern)
+	re_compiled := regroup.MustCompile(rePattern)
 
 	return re_compiled
 }
@@ -340,15 +335,15 @@ func main() {
 	}
 
 	arg.MustParse(&args)
-	cfg := readcfg(args.Config)
+	cfg := ReadConfig(args.Config)
 
-	ch_row := make(chan Row)
+	chRow := make(chan Row)
 
 	// daily history of requests
-	daily_history := map[string][]DailyRow{}
+	dailyHistory := map[string][]DailyRow{}
 
 	// cron scheduler pool
-	cron_pool := map[string]*gocron.Scheduler{}
+	cronPool := map[string]*gocron.Scheduler{}
 
 	// tg bot init
 	tgbot, err := tgbotapi.NewBotAPI(cfg.Tgtoken)
@@ -362,38 +357,38 @@ func main() {
 	})
 	tgbot.Request(commands_cfg)
 
-	cfg_reverse := get_cfg_reverse_map(cfg.Projects)
+	cfgReverse := GetConfigReverseMap(cfg.Projects)
 	// init tg listners
-	go tglistner(tgbot, cfg_reverse)
+	go BotListner(tgbot, cfgReverse)
 
-	for name, project_cfg := range cfg.Projects {
+	for name, projectCfg := range cfg.Projects {
 		// get complied regexp from log format for parse row's
-		project_cfg.ParseRegexp = get_compiled_regexp(project_cfg.Format)
+		projectCfg.ParseRegexp = CompileRegexp(projectCfg.Format)
 
 		// init cron for project's report and send it
-		cron_pool[name] = gocron.NewScheduler(time.UTC)
-		cron_pool[name].Cron(project_cfg.ReportSchedule).Do(sendreport, *tgbot, cfg.Projects[name].TgChat, name, &daily_history)
-		cron_pool[name].StartAsync()
+		cronPool[name] = gocron.NewScheduler(time.UTC)
+		cronPool[name].Cron(projectCfg.ReportSchedule).Do(SendReport, *tgbot, cfg.Projects[name].TgChat, name, &dailyHistory)
+		cronPool[name].StartAsync()
 
 		// init tail for each log-file
-		t, err := tail.TailFile(project_cfg.Log,
+		t, err := tail.TailFile(projectCfg.Log,
 			tail.Config{Follow: true, ReOpen: true, Poll: true})
 
 		if err != nil {
 			log.Panic(err)
 		}
 
-		go watch(name, t, project_cfg, ch_row)
+		go WatchLog(name, t, projectCfg, chRow)
 	}
 
 	now := time.Now()
 
 	for {
 		select {
-		case row := <-ch_row:
-			if is_today(row.LocalTimeP) {
+		case row := <-chRow:
+			if IsToday(row.LocalTimeP) {
 				daily := DailyRow{row.LocalTimeP, row.Status}
-				daily_history[row.ProjectName] = append(daily_history[row.ProjectName], daily)
+				dailyHistory[row.ProjectName] = append(dailyHistory[row.ProjectName], daily)
 			}
 
 			// skip older rows
@@ -413,7 +408,7 @@ func main() {
 						row.RemoteAddr, row.LocalTimeP, row.RequestP.Method,
 						row.RequestP.Protocol, row.UserAgent)
 
-					tg_send_message(*tgbot, cfg.Projects[row.ProjectName].TgChat, markup)
+					SendMessage(*tgbot, cfg.Projects[row.ProjectName].TgChat, markup)
 				}
 			}
 		}
