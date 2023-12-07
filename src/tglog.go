@@ -248,7 +248,7 @@ func IsToday(localtime time.Time) bool {
 		(dayEnd.Compare(localtime) == 1)
 }
 
-func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse, geoDB *geoip2.Reader) {
+func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -265,6 +265,14 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse, geoDB *geoip2.Re
 
 		if update.Message.Command() == "export" {
 			if projectCfg, ok := cfgReverse[update.Message.Chat.ID]; ok {
+				dbPath, _ := DownloadGeoDb()
+
+				geoDB, err := geoip2.Open(dbPath)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer geoDB.Close()
+
 				file, err := os.Open(projectCfg.Log)
 				if err != nil {
 					log.Panic(err)
@@ -344,7 +352,6 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse, geoDB *geoip2.Re
 				}
 			}
 		}
-
 	}
 }
 
@@ -473,7 +480,7 @@ func main() {
 
 	cfgReverse := GetConfigReverseMap(cfg.Projects)
 	// init tg listners
-	go BotListner(tgbot, cfgReverse, geoDB)
+	go BotListner(tgbot, cfgReverse)
 
 	for name, projectCfg := range cfg.Projects {
 		// get complied regexp from log format for parse row's
