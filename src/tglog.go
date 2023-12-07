@@ -2,9 +2,13 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -17,6 +21,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/nxadm/tail"
 	"github.com/oriser/regroup"
+	"github.com/oschwald/geoip2-golang"
+	"github.com/schollz/progressbar/v3"
 	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v3"
 )
@@ -37,6 +43,9 @@ type Row struct {
 	Referer     string `regroup:"http_referer"`
 	UserAgent   string `regroup:"http_user_agent"`
 	ProjectName string
+	GeoCountry  string
+	GeoCity     string
+	IsBot       string
 }
 
 type ProjectConfig struct {
@@ -71,12 +80,13 @@ type Report struct {
 
 const MSG_TEMPLATE = `
 %s <b>%d</b>: %s
-
+%s
 <b>IP</b>: %s
 <b>DATE</b>: %s
 <b>METHOD</b>: %s / %s
+<b>GEO: </b> %s
 
-<pre>%s</pre>`
+<blockquote>%s</blockquote>`
 
 const REPORT_TEMPLATE = `
 ℹ️ <b>REPORT %s - %s</b>
@@ -89,7 +99,7 @@ const REPORT_TEMPLATE = `
 <b>TOTAL</b>: %d
 `
 
-func ParseLine(line string, cfg ProjectConfig) (Row, bool) {
+func ParseLine(line string, cfg ProjectConfig, geoDB *geoip2.Reader) (Row, bool) {
 	row := &Row{}
 	err := cfg.ParseRegexp.MatchToTarget(line, row)
 
@@ -118,28 +128,61 @@ func ParseLine(line string, cfg ProjectConfig) (Row, bool) {
 	}
 	row.RequestP.Method = requestParsed[0]
 
-	parsed_url, _ := url.Parse(requestParsed[1])
-	if parsed_url.Host == "" {
+	parsedUrl, _ := url.Parse(requestParsed[1])
+	if parsedUrl.Host == "" {
 		row.RequestP.Uri, _ = url.JoinPath(cfg.Host, requestParsed[1])
 	} else {
 		row.RequestP.Uri = requestParsed[1]
 	}
 	row.RequestP.Protocol = requestParsed[2]
 
+	// detect country and city
+	ip := net.ParseIP(row.RemoteAddr)
+
+	recordCountry, err := geoDB.Country(ip)
+	if err != nil {
+		row.GeoCountry = ""
+	} else {
+		row.GeoCountry = recordCountry.Country.Names["en"]
+	}
+
+	recordCity, err := geoDB.City(ip)
+	if err != nil {
+		row.GeoCity = ""
+	} else {
+		row.GeoCity = recordCity.City.Names["en"]
+	}
+
+	// make reverse DNS query for detect true bots
+	if row.RemoteAddr != "" && strings.Contains(row.UserAgent, "YandexBot") {
+		addr, err := net.LookupAddr(row.RemoteAddr)
+		if err == nil && len(addr) > 0 {
+			if strings.Contains(addr[0], "yandex") {
+				row.IsBot = "yandex"
+			}
+		}
+	} else if row.RemoteAddr != "" && strings.Contains(row.UserAgent, "Googlebot") {
+		addr, err := net.LookupAddr(row.RemoteAddr)
+		if err == nil && len(addr) > 0 {
+			if strings.Contains(addr[0], "googlebot") {
+				row.IsBot = "google"
+			}
+		}
+	}
+
 	return *row, true
 }
 
-func WatchLog(name string, tailer *tail.Tail, cfg ProjectConfig, ch chan Row) {
+func WatchLog(name string, tailer *tail.Tail, cfg ProjectConfig, geoDB *geoip2.Reader, ch chan Row) {
 	for line := range tailer.Lines {
 		if line.Text == "" {
 			continue
 		}
 
-		if row, ok := ParseLine(line.Text, cfg); ok {
+		if row, ok := ParseLine(line.Text, cfg, geoDB); ok {
 			row.ProjectName = name
 			ch <- row
 		}
-
 	}
 }
 
@@ -204,7 +247,7 @@ func IsToday(localtime time.Time) bool {
 		(dayEnd.Compare(localtime) == 1)
 }
 
-func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
+func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse, geoDB *geoip2.Reader) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
@@ -234,7 +277,7 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 
 				scanner := bufio.NewScanner(file)
 				for scanner.Scan() {
-					if row, ok := ParseLine(scanner.Text(), projectCfg); ok {
+					if row, ok := ParseLine(scanner.Text(), projectCfg, geoDB); ok {
 						rows = append(rows, row)
 					}
 				}
@@ -267,6 +310,9 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 					f.SetCellValue("all", "H1", "Bytes")
 					f.SetCellValue("all", "I1", "Referer")
 					f.SetCellValue("all", "J1", "UserAgent")
+					f.SetCellValue("all", "K1", "GeoCountry")
+					f.SetCellValue("all", "L1", "GeoCity")
+					f.SetCellValue("all", "M1", "IsBot")
 
 					for i, row := range rows {
 						f.SetCellValue("all", "A"+strconv.Itoa(i+2), row.RemoteAddr)
@@ -279,6 +325,9 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 						f.SetCellValue("all", "H"+strconv.Itoa(i+2), row.Bytes)
 						f.SetCellValue("all", "I"+strconv.Itoa(i+2), row.Referer)
 						f.SetCellValue("all", "J"+strconv.Itoa(i+2), row.UserAgent)
+						f.SetCellValue("all", "K"+strconv.Itoa(i+2), row.GeoCountry)
+						f.SetCellValue("all", "L"+strconv.Itoa(i+2), row.GeoCity)
+						f.SetCellValue("all", "M"+strconv.Itoa(i+2), row.IsBot)
 					}
 
 					f.SetActiveSheet(index)
@@ -329,6 +378,53 @@ func CompileRegexp(format string) *regroup.ReGroup {
 	return re_compiled
 }
 
+func DownloadGeoDb() (string, bool) {
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	localPath, _ := url.JoinPath(homedir, ".tglog")
+	err = os.MkdirAll(localPath, os.ModePerm)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbPath, _ := url.JoinPath(localPath, "GeoLite2-City.mmdb")
+
+	_, err = os.Stat(dbPath)
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		log.Println("GEO database not found, downloading...")
+
+		out, err := os.Create(dbPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer out.Close()
+
+		resp, err := http.Get("https://git.io/GeoLite2-City.mmdb")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		bar := progressbar.DefaultBytes(
+			resp.ContentLength,
+			"downloading",
+		)
+
+		_, err = io.Copy(io.MultiWriter(out, bar), resp.Body)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println("[OK]")
+	}
+
+	return dbPath, true
+}
+
 func main() {
 	var args struct {
 		Config string `default:"/usr/local/etc/tglog/config.yaml"`
@@ -336,6 +432,14 @@ func main() {
 
 	arg.MustParse(&args)
 	cfg := ReadConfig(args.Config)
+
+	dbPath, _ := DownloadGeoDb()
+
+	geoDB, err := geoip2.Open(dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer geoDB.Close()
 
 	chRow := make(chan Row)
 
@@ -351,15 +455,15 @@ func main() {
 		log.Panic(err)
 	}
 
-	commands_cfg := tgbotapi.NewSetMyCommands(tgbotapi.BotCommand{
+	commandsCfg := tgbotapi.NewSetMyCommands(tgbotapi.BotCommand{
 		Command:     "export",
 		Description: "Export log to Excel",
 	})
-	tgbot.Request(commands_cfg)
+	tgbot.Request(commandsCfg)
 
 	cfgReverse := GetConfigReverseMap(cfg.Projects)
 	// init tg listners
-	go BotListner(tgbot, cfgReverse)
+	go BotListner(tgbot, cfgReverse, geoDB)
 
 	for name, projectCfg := range cfg.Projects {
 		// get complied regexp from log format for parse row's
@@ -378,8 +482,10 @@ func main() {
 			log.Panic(err)
 		}
 
-		go WatchLog(name, t, projectCfg, chRow)
+		go WatchLog(name, t, projectCfg, geoDB, chRow)
 	}
+
+	log.Println("[TGLog is started]")
 
 	now := time.Now()
 
@@ -403,10 +509,25 @@ func main() {
 						emoji = "🟥"
 					}
 
+					var botStatus string
+					if row.IsBot != "" {
+						botStatus = fmt.Sprintf("<b>\n⚡️ [%s]</b>\n", strings.ToUpper(row.IsBot))
+					}
+
+					var geoStatus []string
+
+					if row.GeoCity != "" {
+						geoStatus = append(geoStatus, row.GeoCity)
+					}
+
+					if row.GeoCountry != "" {
+						geoStatus = append(geoStatus, row.GeoCountry)
+					}
+
 					markup := fmt.Sprintf(MSG_TEMPLATE,
 						emoji, row.Status, row.RequestP.Uri,
-						row.RemoteAddr, row.LocalTimeP, row.RequestP.Method,
-						row.RequestP.Protocol, row.UserAgent)
+						botStatus, row.RemoteAddr, row.LocalTimeP, row.RequestP.Method,
+						row.RequestP.Protocol, strings.Join(geoStatus, "/"), row.UserAgent)
 
 					SendMessage(*tgbot, cfg.Projects[row.ProjectName].TgChat, markup)
 				}
