@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/user"
 	"regexp"
 	"strconv"
 	"strings"
@@ -379,12 +380,21 @@ func CompileRegexp(format string) *regroup.ReGroup {
 }
 
 func DownloadGeoDb() (string, bool) {
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
+	user, _ := user.Current()
+	var homedir, localPath string
+	var err error
+
+	if user.Uid == "0" {
+		localPath = "/usr/local/etc/tglog/"
+	} else {
+		homedir, err = os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		localPath, _ = url.JoinPath(homedir, ".tglog")
 	}
 
-	localPath, _ := url.JoinPath(homedir, ".tglog")
 	err = os.MkdirAll(localPath, os.ModePerm)
 	if err != nil {
 		log.Fatal(err)
