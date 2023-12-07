@@ -95,5 +95,7 @@ Among other things, you need create a Telegram bot through [@botfather](https://
 - [X] add systemd support
 - [X] add binaries to git release
 - [X] add Makefile for project building
-- [ ] add geoip
-- [ ] add robots DNS detector
+- [X] add geoip
+- [X] add robots DNS detector
+- [ ] $HOME not found under systemd
+      replace default dir?
