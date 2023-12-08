@@ -285,6 +285,10 @@ func BotListner(bot *tgbotapi.BotAPI, cfgReverse ConfigReverse) {
 				rows := []Row{}
 
 				scanner := bufio.NewScanner(file)
+
+				buf := make([]byte, 0, 64*1024)
+				scanner.Buffer(buf, 1024*1024)
+
 				for scanner.Scan() {
 					if row, ok := ParseLine(scanner.Text(), projectCfg, geoDB); ok {
 						rows = append(rows, row)
